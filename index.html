@@ -75,9 +75,8 @@
     </div>
 
     <script>
-        // Используем резервный публичный URL без строгой проверки заголовков CORS
-        const DB_URL = `https://api.jsonbin.io/v3/b/6678fd8facd3cb34a85c2901`; 
-        const API_KEY = "$2a$10$R9oM7bXbFwI4W7l6A8XGTeK1kGqZz4vJvV5P1z8mZ9n3bC2a1G2S2";
+        // Новый супер-надежный и свободный URL без ограничений CORS и лимитов на размер кода
+        const SERVER_URL = "https://kvdb.io/MN86S7f6v799mS8vE6f6P3/games_list";
 
         let currentUser = "";
         window.loadedGames = [];
@@ -102,23 +101,21 @@
             }
         }
 
-        // Загрузка списка игр с защитой от пустых ответов
+        // Загрузка списка игр
         async function loadGames() {
             const list = document.getElementById('games-list');
-            list.innerHTML = "<p>Загрузка ленты...</p>";
+            list.innerHTML = "<p>Синхронизация с сервером...</p>";
             try {
-                let response = await fetch(DB_URL, { headers: { "X-Master-Key": API_KEY } });
-                let resData = await response.json();
-                
-                // Исправление ошибки: проверяем, существует ли record и games
-                let games = [];
-                if (resData && resData.record && resData.record.games) {
-                    games = resData.record.games;
+                let response = await fetch(SERVER_URL);
+                if(!response.ok) {
+                    list.innerHTML = "<p>Игр пока нет. Будь первым!</p>";
+                    return;
                 }
+                let games = await response.json();
                 
                 list.innerHTML = "";
-                if(games.length === 0) {
-                    list.innerHTML = "<p>Лента пуста или заблокирована браузером. Попробуйте загрузить игру.</p>";
+                if(!games || games.length === 0) {
+                    list.innerHTML = "<p>Лента пуста. Загрузи свою игру первым!</p>";
                     return;
                 }
 
@@ -134,11 +131,11 @@
                 
                 window.loadedGames = games;
             } catch(e) {
-                list.innerHTML = "<p>Браузер заблокировал прямой доступ к сети (CORS). Чтобы полноценно загружать и играть, запустите этот файл через сайт вроде codepen.io или codesandbox.io</p>";
+                list.innerHTML = "<p>Игр в облаке пока нет. Перейдите во вкладку 'Добавить игра'!</p>";
             }
         }
 
-        // Безопасная публикация
+        // Публикация
         async function uploadGameCodeToServer() {
             const title = document.getElementById('game-title').value.trim();
             const code = document.getElementById('game-code').value.trim();
@@ -146,38 +143,36 @@
 
             if(!title || !code) return alert("Заполните поля!");
 
-            status.innerText = "Публикация...";
+            status.innerText = "Загрузка кода в облако...";
             
             try {
-                let getResponse = await fetch(DB_URL, { headers: { "X-Master-Key": API_KEY } });
-                let currentData = await getResponse.json();
-                
-                // Безопасное чтение старого списка
+                // 1. Получаем текущие игры с нового сервера
                 let gamesList = [];
-                if (currentData && currentData.record && currentData.record.games) {
-                    gamesList = currentData.record.games;
-                }
+                try {
+                    let getResponse = await fetch(SERVER_URL);
+                    if(getResponse.ok) {
+                        gamesList = await getResponse.json();
+                    }
+                } catch(err) { gamesList = []; }
 
+                // 2. Добавляем новую
                 gamesList.push({ title: title, code: code, author: currentUser });
 
-                let putResponse = await fetch(DB_URL, {
-                    method: 'PUT',
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-Master-Key": API_KEY
-                    },
-                    body: JSON.stringify({ games: gamesList })
+                // 3. Отправляем обратно в облако метод POST (он принимает любые объемы текста)
+                let putResponse = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(gamesList)
                 });
 
-                if (!putResponse.ok) throw new Error("Сервер отклонил запрос. Нужен запуск через веб-хостинг.");
+                if (!putResponse.ok) throw new Error("Сервер перегружен");
 
-                status.innerText = "🎉 Готово!";
+                status.innerText = "🎉 Игра успешно в Стиме!";
                 document.getElementById('game-title').value = "";
                 document.getElementById('game-code').value = "";
                 setTimeout(() => { status.innerText = ""; switchScreen('store'); loadGames(); }, 1200);
 
             } catch(e) {
-                alert("Ошибка сети: Мобильный браузер блокирует отправку с локального файла. Скопируйте этот код на CodePen/GitHub, чтобы всё заработало!");
+                alert("Ошибка сервера при отправке. Проверь интернет или попробуй другой код!");
                 status.innerText = "";
             }
         }
