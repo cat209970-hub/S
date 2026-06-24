@@ -75,8 +75,8 @@
     </div>
 
     <script>
-        // Новый супер-надежный и свободный URL без ограничений CORS и лимитов на размер кода
-        const SERVER_URL = "https://kvdb.io/MN86S7f6v799mS8vE6f6P3/games_list";
+        // Новый стабильный сервер без жестких лимитов и CORS-блокировок
+        const API_URL = "https://6679df05129421f1e289df71.mockapi.io/api/v1/steam_games";
 
         let currentUser = "";
         window.loadedGames = [];
@@ -104,13 +104,9 @@
         // Загрузка списка игр
         async function loadGames() {
             const list = document.getElementById('games-list');
-            list.innerHTML = "<p>Синхронизация с сервером...</p>";
+            list.innerHTML = "<p>Загрузка ленты...</p>";
             try {
-                let response = await fetch(SERVER_URL);
-                if(!response.ok) {
-                    list.innerHTML = "<p>Игр пока нет. Будь первым!</p>";
-                    return;
-                }
+                let response = await fetch(API_URL);
                 let games = await response.json();
                 
                 list.innerHTML = "";
@@ -131,48 +127,41 @@
                 
                 window.loadedGames = games;
             } catch(e) {
-                list.innerHTML = "<p>Игр в облаке пока нет. Перейдите во вкладку 'Добавить игра'!</p>";
+                list.innerHTML = "<p>Ошибка получения списка. Попробуйте обновить страницу.</p>";
             }
         }
 
-        // Публикация
+        // Публикация кода
         async function uploadGameCodeToServer() {
             const title = document.getElementById('game-title').value.trim();
             const code = document.getElementById('game-code').value.trim();
             const status = document.getElementById('upload-status');
 
-            if(!title || !code) return alert("Заполните поля!");
+            if(!title || !code) return alert("Заполните все поля!");
 
-            status.innerText = "Загрузка кода в облако...";
+            status.innerText = "Публикация игры в облако...";
             
             try {
-                // 1. Получаем текущие игры с нового сервера
-                let gamesList = [];
-                try {
-                    let getResponse = await fetch(SERVER_URL);
-                    if(getResponse.ok) {
-                        gamesList = await getResponse.json();
-                    }
-                } catch(err) { gamesList = []; }
-
-                // 2. Добавляем новую
-                gamesList.push({ title: title, code: code, author: currentUser });
-
-                // 3. Отправляем обратно в облако метод POST (он принимает любые объемы текста)
-                let putResponse = await fetch(SERVER_URL, {
+                // Отправляем игру напрямую на сервер методом POST
+                let putResponse = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify(gamesList)
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        title: title, 
+                        code: code, 
+                        author: currentUser 
+                    })
                 });
 
                 if (!putResponse.ok) throw new Error("Сервер перегружен");
 
-                status.innerText = "🎉 Игра успешно в Стиме!";
+                status.innerText = "🎉 Игра успешно добавлена!";
                 document.getElementById('game-title').value = "";
                 document.getElementById('game-code').value = "";
                 setTimeout(() => { status.innerText = ""; switchScreen('store'); loadGames(); }, 1200);
 
             } catch(e) {
-                alert("Ошибка сервера при отправке. Проверь интернет или попробуй другой код!");
+                alert("Не удалось загрузить игру. Возможно, её код слишком огромный.");
                 status.innerText = "";
             }
         }
