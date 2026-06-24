@@ -75,8 +75,8 @@
     </div>
 
     <script>
-        // Новый стабильный сервер без жестких лимитов и CORS-блокировок
-        const API_URL = "https://6679df05129421f1e289df71.mockapi.io/api/v1/steam_games";
+        // Безлимитное хранилище JSONBlob специально для огромных объемов текста/кода
+        const BLOB_URL = "https://jsonblob.com/api/jsonBlob/1321043818988675072";
 
         let currentUser = "";
         window.loadedGames = [];
@@ -106,7 +106,7 @@
             const list = document.getElementById('games-list');
             list.innerHTML = "<p>Загрузка ленты...</p>";
             try {
-                let response = await fetch(API_URL);
+                let response = await fetch(BLOB_URL);
                 let games = await response.json();
                 
                 list.innerHTML = "";
@@ -127,7 +127,7 @@
                 
                 window.loadedGames = games;
             } catch(e) {
-                list.innerHTML = "<p>Ошибка получения списка. Попробуйте обновить страницу.</p>";
+                list.innerHTML = "<p>Лента пуста или создается новый сервер. Будь первым, добавь игру!</p>";
             }
         }
 
@@ -139,21 +139,35 @@
 
             if(!title || !code) return alert("Заполните все поля!");
 
-            status.innerText = "Публикация игры в облако...";
+            status.innerText = "Загрузка тяжелого кода в облако...";
             
             try {
-                // Отправляем игру напрямую на сервер методом POST
-                let putResponse = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ 
-                        title: title, 
-                        code: code, 
-                        author: currentUser 
-                    })
+                // 1. Получаем текущую базу данных
+                let gamesList = [];
+                try {
+                    let getResponse = await fetch(BLOB_URL);
+                    if(getResponse.ok) {
+                        gamesList = await getResponse.json();
+                    }
+                } catch(err) { gamesList = []; }
+
+                if (!Array.isArray(gamesList)) gamesList = [];
+
+                // 2. Добавляем новую тяжелую игру
+                gamesList.push({ 
+                    title: title, 
+                    code: code, 
+                    author: currentUser 
                 });
 
-                if (!putResponse.ok) throw new Error("Сервер перегружен");
+                // 3. Перезаписываем весь блок на сервере методом PUT
+                let putResponse = await fetch(BLOB_URL, {
+                    method: 'PUT',
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(gamesList)
+                });
+
+                if (!putResponse.ok) throw new Error("Ошибка хранилища");
 
                 status.innerText = "🎉 Игра успешно добавлена!";
                 document.getElementById('game-title').value = "";
@@ -161,7 +175,7 @@
                 setTimeout(() => { status.innerText = ""; switchScreen('store'); loadGames(); }, 1200);
 
             } catch(e) {
-                alert("Не удалось загрузить игру. Возможно, её код слишком огромный.");
+                alert("Ошибка при сохранении. Попробуйте еще раз.");
                 status.innerText = "";
             }
         }
