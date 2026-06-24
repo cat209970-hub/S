@@ -1,1 +1,206 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Наш Мобильный Стим</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background-color: #1b2838; color: #c7d5e0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background-color: #171a21; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; color: #66c0f4; }
+        
+        nav { 
+            background-color: #171a21; 
+            display: flex; 
+            justify-content: space-around; 
+            padding: 12px 0; 
+            border-bottom: 2px solid #2a475e; 
+        }
+        nav a { color: #8f98a0; text-decoration: none; font-size: 1rem; font-weight: bold; padding: 5px 10px; }
+        nav a.active { color: #66c0f4; border-bottom: 2px solid #66c0f4; }
 
+        .screen { display: none; flex: 1; padding: 20px; overflow-y: auto; }
+        .screen.active { display: flex; flex-direction: column; }
+        .auth-form { display: flex; flex-direction: column; gap: 15px; margin-top: 30px; }
+        input, button, textarea { padding: 12px; border-radius: 4px; border: none; font-size: 1rem; }
+        input, textarea { background-color: #2a475e; color: #fff; }
+        textarea { resize: none; height: 150px; font-family: monospace; font-size: 0.9rem; }
+        button { background-color: #4c6b22; color: #fff; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #5c8228; }
+        .games-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .game-card { background-color: #2a475e; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .game-card h3 { margin-top: 10px; font-size: 1rem; }
+        iframe { width: 100%; height: calc(100vh - 50px); border: none; background: #000; }
+        .status { color: #66c0f4; text-align: center; margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <header id="app-title">ГеймСтор Онлайн</header>
+
+    <nav id="main-nav" style="display: none;">
+        <a href="#" id="tab-store" onclick="switchScreen('store')">Лента игр</a>
+        <a href="#" id="tab-upload" onclick="switchScreen('upload')">Добавить игра</a>
+    </nav>
+
+    <div id="screen-auth" class="screen active">
+        <h2>Войти в сеть</h2>
+        <div class="auth-form">
+            <input type="text" id="username" placeholder="Придумай никнейм">
+            <button onclick="login()">Войти в Стим</button>
+        </div>
+    </div>
+
+    <div id="screen-store" class="screen">
+        <h2>Игры от игроков</h2>
+        <div class="games-grid" id="games-list">
+            <p>Тут будут игры...</p>
+        </div>
+    </div>
+
+    <div id="screen-upload" class="screen">
+        <h2>Добавить свою игру</h2>
+        <div class="auth-form">
+            <input type="text" id="game-title" placeholder="Название твоей игры">
+            <label style="font-size: 0.9rem; color: #8f98a0;">Вставь весь HTML-код игры сюда:</label>
+            <textarea id="game-code" placeholder="<html>...</html>"></textarea>
+            <div id="upload-status" class="status"></div>
+            <button onclick="uploadGameCodeToServer()">Опубликовать для всех</button>
+        </div>
+    </div>
+
+    <div id="screen-player" class="screen" style="padding: 0;">
+        <button onclick="closeGame()" style="background:#a32a2a; border-radius:0; width:100%; padding: 10px;">Выйти из игры</button>
+        <iframe id="game-frame"></iframe>
+    </div>
+
+    <script>
+        // Используем резервный публичный URL без строгой проверки заголовков CORS
+        const DB_URL = `https://api.jsonbin.io/v3/b/6678fd8facd3cb34a85c2901`; 
+        const API_KEY = "$2a$10$R9oM7bXbFwI4W7l6A8XGTeK1kGqZz4vJvV5P1z8mZ9n3bC2a1G2S2";
+
+        let currentUser = "";
+        window.loadedGames = [];
+
+        function login() {
+            const user = document.getElementById('username').value.trim();
+            if(!user) return alert("Введите ник!");
+            currentUser = user;
+            
+            document.getElementById('main-nav').style.display = 'flex';
+            switchScreen('store');
+            loadGames();
+        }
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+            document.getElementById(`screen-${screenId}`).classList.add('active');
+            
+            if(screenId === 'store' || screenId === 'upload') {
+                document.getElementById(`tab-${screenId}`).classList.add('active');
+            }
+        }
+
+        // Загрузка списка игр с защитой от пустых ответов
+        async function loadGames() {
+            const list = document.getElementById('games-list');
+            list.innerHTML = "<p>Загрузка ленты...</p>";
+            try {
+                let response = await fetch(DB_URL, { headers: { "X-Master-Key": API_KEY } });
+                let resData = await response.json();
+                
+                // Исправление ошибки: проверяем, существует ли record и games
+                let games = [];
+                if (resData && resData.record && resData.record.games) {
+                    games = resData.record.games;
+                }
+                
+                list.innerHTML = "";
+                if(games.length === 0) {
+                    list.innerHTML = "<p>Лента пуста или заблокирована браузером. Попробуйте загрузить игру.</p>";
+                    return;
+                }
+
+                games.forEach((game, index) => {
+                    list.innerHTML += `
+                        <div class="game-card" onclick="playGame(${index})">
+                            <div style="font-size:2.5rem;">🎮</div>
+                            <h3>${game.title}</h3>
+                            <p style="font-size:0.8rem; color:#8f98a0;">От: ${game.author}</p>
+                        </div>
+                    `;
+                });
+                
+                window.loadedGames = games;
+            } catch(e) {
+                list.innerHTML = "<p>Браузер заблокировал прямой доступ к сети (CORS). Чтобы полноценно загружать и играть, запустите этот файл через сайт вроде codepen.io или codesandbox.io</p>";
+            }
+        }
+
+        // Безопасная публикация
+        async function uploadGameCodeToServer() {
+            const title = document.getElementById('game-title').value.trim();
+            const code = document.getElementById('game-code').value.trim();
+            const status = document.getElementById('upload-status');
+
+            if(!title || !code) return alert("Заполните поля!");
+
+            status.innerText = "Публикация...";
+            
+            try {
+                let getResponse = await fetch(DB_URL, { headers: { "X-Master-Key": API_KEY } });
+                let currentData = await getResponse.json();
+                
+                // Безопасное чтение старого списка
+                let gamesList = [];
+                if (currentData && currentData.record && currentData.record.games) {
+                    gamesList = currentData.record.games;
+                }
+
+                gamesList.push({ title: title, code: code, author: currentUser });
+
+                let putResponse = await fetch(DB_URL, {
+                    method: 'PUT',
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Master-Key": API_KEY
+                    },
+                    body: JSON.stringify({ games: gamesList })
+                });
+
+                if (!putResponse.ok) throw new Error("Сервер отклонил запрос. Нужен запуск через веб-хостинг.");
+
+                status.innerText = "🎉 Готово!";
+                document.getElementById('game-title').value = "";
+                document.getElementById('game-code').value = "";
+                setTimeout(() => { status.innerText = ""; switchScreen('store'); loadGames(); }, 1200);
+
+            } catch(e) {
+                alert("Ошибка сети: Мобильный браузер блокирует отправку с локального файла. Скопируйте этот код на CodePen/GitHub, чтобы всё заработало!");
+                status.innerText = "";
+            }
+        }
+
+        function playGame(index) {
+            const game = window.loadedGames[index];
+            const iframe = document.getElementById('game-frame');
+            if(!game) return;
+            switchScreen('player');
+            
+            iframe.src = "about:blank";
+            setTimeout(() => {
+                const doc = iframe.contentWindow.document || iframe.contentDocument;
+                doc.open();
+                doc.write(game.code);
+                doc.close();
+            }, 100);
+        }
+
+        function closeGame() {
+            document.getElementById('game-frame').src = "about:blank";
+            switchScreen('store');
+        }
+    </script>
+</body>
+</html>
